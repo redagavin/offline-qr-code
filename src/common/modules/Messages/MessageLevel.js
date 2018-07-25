@@ -6,9 +6,9 @@
  * @default
  */
 export const MESSAGE_LEVEL = Object.freeze({
-    "ERROR": 3,
-    "WARN": 2,
-    "INFO": 1,
-    "LOADING": -2,
-    "SUCCESS": -3
+    ERROR: Symbol("3 (error)"),
+    WARN: Symbol("2 (warn)"),
+    INFO: Symbol("1 (info)"),
+    LOADING: Symbol("-2 (loading)"),
+    SUCCESS: Symbol("-3 (success)"),
 });

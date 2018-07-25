@@ -3,7 +3,7 @@ import debounce from "/common/modules/lib/lodash/debounce.js";
 
 import * as Logger from "/common/modules/Logger.js";
 import * as AddonSettings from "/common/modules/AddonSettings.js";
-import * as MessageHandler from "/common/modules/MessageHandler.js";
+import * as MessageHandler from "/common/modules/Messages/MessageHandler.js";
 
 const TIP_SETTING_STORAGE_ID = "randomTips";
 const GLOBAL_RANDOMIZE = 0.2; // (%)

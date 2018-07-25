@@ -25,41 +25,6 @@ const HOOK_TEMPLATE = Object.freeze({
 
 export const GLOBAL_HOOK_ID = Symbol("hook: global");
 
-const hookXs = {
-    "global": {
-        "show": null,
-        "hide": null,
-        "dismissStart": null,
-        "dismissEnd": null,
-        "actionButton": null
-    },
-    [MESSAGE_LEVEL.ERROR]: {
-        "show": null,
-        "hide": null,
-        "actionButton": null
-    },
-    [MESSAGE_LEVEL.WARN]: {
-        "show": null,
-        "hide": null,
-        "actionButton": null
-    },
-    [MESSAGE_LEVEL.INFO]: {
-        "show": null,
-        "hide": null,
-        "actionButton": null
-    },
-    [MESSAGE_LEVEL.SUCCESS]: {
-        "show": null,
-        "hide": null,
-        "actionButton": null
-    },
-    [MESSAGE_LEVEL.LOADING]: {
-        "show": null,
-        "hide": null,
-        "actionButton": null
-    },
-};
-
 /**
  * Returns the message type (ID) of a custom message.
  *
@@ -313,12 +278,12 @@ export function showMessage(...args) {
 
     if (isCustomMessage) {
         // automatically register/setup hook object when new message is passed
-        if (hooks[messagetype] === undefined) {
-            hooks[messagetype] = {
+        if (hooks.get(messagetype) === undefined) {
+            hooks.set(messagetype, {
                 "show": null,
                 "hide": null,
                 "actionButton": null
-            };
+            });
         }
     }
 
@@ -376,7 +341,7 @@ export function showMessage(...args) {
     if (actionButton !== null && elActionButton && elActionButtonLink) {
         if (isFunction(actionButton.action)) {
             // save option to be called later
-            hooks[messagetype].actionButton = actionButton.action;
+            hooks.get(messagetype).actionButton = actionButton.action;
 
             // potentiall remove previous set thing
             elActionButtonLink.removeAttribute("href");
@@ -384,7 +349,7 @@ export function showMessage(...args) {
             elActionButtonLink.setAttribute("href", actionButton.action);
 
             // unset potential previously set handler
-            hooks[messagetype].actionButton = null;
+            hooks.get(messagetype).actionButton = null;
         }
 
         elActionButton.textContent = browser.i18n.getMessage(actionButton.text) || actionButton.text;
@@ -450,7 +415,7 @@ export function hideMessage(messagetype) {
  * The message is hidden by default – regardless of the state of the origin
  * message (type).
  *
- * CURRENTLY UNUSED; UNTESTED!!
+ * CURRENTLY UNTESTED!!
  *
  * @function
  * @param  {MESSAGE_LEVEL|HTMLElement} messagetype
@@ -490,7 +455,7 @@ export function cloneMessage(messagetype, newId) {
 export function setHook(messagetype, hooktype, hookFunction) {
     const hook = hooks.get(messagetype);
     // hook.set(hooktype, hookFunction);
-    hooktype[hooktype] = hookFunction;
+    hook[hooktype] = hookFunction;
     hooks.set(messagetype, hook);
 }
 
@@ -504,11 +469,20 @@ export function setHook(messagetype, hooktype, hookFunction) {
  * @param {HTMLElement} elElement
  * @param {string} cssClass
  * @returns {void}
+ * @throws {TypeError}
  */
 export function registerMessageType(messagetype, elElement, cssClass) {
-    elementByType.add(messagetype, elElement);
-    styleClassByType.add(messagetype, cssClass);
-    hooks.add(messagetype, HOOK_TEMPLATE);
+    elementByType.set(messagetype, elElement);
+    styleClassByType.set(messagetype, cssClass);
+    hooks.set(messagetype, HOOK_TEMPLATE);
+
+    /* check for vadility */
+    if (!(elElement instanceof HTMLElement)) {
+        throw new TypeError("Invalid elElement, not an HTMLElement or HTMLElement does not exist.");
+    }
+    if (!cssClass || !(document.getElementsByClassName(cssClass))) {
+        throw new TypeError("Invalid cssClass, does not exist.");
+    }
 
     /* add event listeners */
     const dismissIcons = elElement.getElementsByClassName("icon-dismiss");
@@ -534,7 +508,7 @@ export function registerMessageType(messagetype, elElement, cssClass) {
  * @returns {void}
  */
 export function init() {
-    hooks.add(GLOBAL_HOOK_ID, HOOK_TEMPLATE);
+    hooks.set(GLOBAL_HOOK_ID, HOOK_TEMPLATE);
 }
 
 // init module automatically

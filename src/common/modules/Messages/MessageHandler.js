@@ -1,4 +1,4 @@
-import {MESSAGE_LEVEL} from "/common/modules/MessageLevel.js";
+import {MESSAGE_LEVEL} from "/common/modules/Messages/MessageLevel.js";
 
 import * as Logger from "/common/modules/Logger.js";
 import * as MessageRegister from "./MessageRegister.js";
@@ -203,12 +203,23 @@ export function setDismissHooks(startHook, endHook) {
  * @returns {void}
  */
 export function init() {
+    console.error(PREDEFINED_TYPES, Object.entries(PREDEFINED_TYPES));
     /* add templates */
-    for (const [messageType, messagerData] of Object.keys(PREDEFINED_TYPES)) {
-        const {ELEMENT: elMessage, CSS: cssClass} = messagerData;
+    Object.entries(PREDEFINED_TYPES).forEach(([messageType, messageData]) => {
+        const {ELEMENT: elMessage, CSS: cssClass} = messageData;
+        console.error(messageType, elMessage, cssClass);
 
-        MessageRegister.registerMessageType(messageType, elMessage, cssClass);
-    }
+        try {
+            MessageRegister.registerMessageType(messageType, elMessage, cssClass);
+        } catch (e) {
+            if (!(e instanceof TypeError)) {
+                throw e;
+            }
+
+            Logger.logWarning("loading pre-defined message type failed: ", e);
+            // ignore errors based on messages types, which do not exist
+        }
+    });
 }
 
 // init module automatically

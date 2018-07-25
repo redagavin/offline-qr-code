@@ -1,9 +1,9 @@
-import {MESSAGE_LEVEL} from "/common/modules/MessageLevel.js";
+import {MESSAGE_LEVEL} from "/common/modules/Messages/MessageLevel.js";
 
 import * as Logger from "/common/modules/Logger.js";
 import * as AddonSettings from "/common/modules/AddonSettings.js";
 import * as Colors from "/common/modules/Colors.js";
-import * as MessageHandler from "/common/modules/MessageHandler.js";
+import * as MessageHandler from "/common/modules/Messages/MessageHandler.js";
 
 const REMEBER_SIZE_INTERVAL = 500; // sec
 

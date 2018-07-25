@@ -1,4 +1,4 @@
-import {MESSAGE_LEVEL} from "/common/modules/MessageLevel.js";
+import {MESSAGE_LEVEL} from "/common/modules/Messages/MessageLevel.js";
 import {ADDON_NAME_SHORT} from "/common/modules/GlobalConsts.js";
 
 import * as AddonSettings from "/common/modules/AddonSettings.js";
