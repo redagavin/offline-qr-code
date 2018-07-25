@@ -1,27 +1,31 @@
 // lodash
-import {MESSAGE_LEVEL} from "/common/modules/MessageLevel.js";
 import isFunction from "/common/modules/lib/lodash/isFunction.js";
 
 import * as Logger from "/common/modules/Logger.js";
 
-const ELEMENT_BY_TYPE = Object.freeze({
-    [MESSAGE_LEVEL.ERROR]: document.getElementById("messageError"),
-    [MESSAGE_LEVEL.WARN]: document.getElementById("messageWarning"),
-    [MESSAGE_LEVEL.INFO]: document.getElementById("messageInfo"),
-    [MESSAGE_LEVEL.SUCCESS]: document.getElementById("messageSuccess"),
-    [MESSAGE_LEVEL.LOADING]: document.getElementById("messageLoading")
-});
+const elementByType = new Map();
+const styleClassByType = new Map();
+const hooks = new Map();
 
-// documents the classes for the different message styles
-const DESIGN_BY_TYPE = Object.freeze({
-    [MESSAGE_LEVEL.ERROR]: "error",
-    [MESSAGE_LEVEL.WARN]: "warning",
-    [MESSAGE_LEVEL.INFO]: "info",
-    [MESSAGE_LEVEL.SUCCESS]: "success",
-    [MESSAGE_LEVEL.LOADING]: "info"
-});
+export const HOOK_TYPE = {
+    SHOW: Symbol("hook type: show"),
+    HIDE: Symbol("hook type: hide"),
+    DISMISS_START: Symbol("hook type: dismissStart"),
+    DISMISS_END: Symbol("hook type: dismissEnd"),
+    ACTION_BUTTON: Symbol("hook type: actionButton")
+};
 
-const hooks = {
+const HOOK_TEMPLATE = Object.freeze({
+    [HOOK_TYPE.SHOW]: null,
+    [HOOK_TYPE.HIDE]: null,
+    [HOOK_TYPE.DISMISS_START]: null,
+    [HOOK_TYPE.DISMISS_END]: null,
+    [HOOK_TYPE.ACTION_BUTTON]: null
+},);
+
+export const GLOBAL_HOOK_ID = Symbol("hook: global");
+
+const hookXs = {
     "global": {
         "show": null,
         "hide": null,
@@ -57,83 +61,6 @@ const hooks = {
 };
 
 /**
- * Runs a hook set by some module.
- *
- * It automatically also runs the global hook, but you can still specify a
- * 'global' to ruin it manually.
- *
- * @function
- * @private
- * @param  {MESSAGE_LEVEL|global} messagetype
- * @param  {string} hooktype the type you want to call
- * @param  {Object} param the parameter to pass to the function
- * @returns {void}
- */
-function runHook(messagetype, hooktype, param) {
-    // when not global itself -> to prevent infinite loop
-    if (hooktype !== "global") {
-        // recursively run myself for global hook first
-        runHook(messagetype, "global", param);
-    }
-
-    const hook = hooks[messagetype][hooktype];
-    if (hook !== null && hook !== undefined) {
-        hook(param);
-    }
-}
-
-/**
- * Dismisses (i.e. hides with animation) a message when the dismiss button is clicked.
- *
- * It automatically detects whether it is run as a trigger (click event) or
- * as the "finish event" ("transitionend") after the hiding is animated and
- * hides the message.
- *
- * @function
- * @private
- * @param  {Object} event
- * @returns {void}
- */
-function dismissMessage(event) {
-    // if button is just clicked triggere hiding
-    if (event.type === "click") {
-        const elDismissIcon = event.target;
-        const elMessage = elDismissIcon.parentElement;
-
-        // ignore event, if it is not the correct one from the message box
-        if (!elMessage.classList.contains("message-box")) {
-            return;
-        }
-
-        // trigger hiding
-        elMessage.classList.add("fade-hide");
-
-        // add handler to hide message completly after transition
-        elMessage.addEventListener("transitionend", dismissMessage);
-
-        runHook("global", "dismissStart", {
-            elMessage,
-            event
-        });
-
-        Logger.logInfo("message is dismissed", event);
-    } else if (event.type === "transitionend") {
-        const elMessage = event.target;
-
-        // hide message (and icon)
-        hideMessage(elMessage);
-
-        runHook("global", "dismissEnd", {
-            elMessage,
-            event
-        });
-
-        // remove set handler
-        elMessage.removeEventListener("transitionend", dismissMessage);
-    }
-}
-
-/**
  * Returns the message type (ID) of a custom message.
  *
  * @function
@@ -162,13 +89,13 @@ function getCustomMessageType(elMessage) {
  * @throws {Error}
  */
 function getMessageTypeFromElement(elMessage) {
-    let messagetype = Object.keys(ELEMENT_BY_TYPE).find((messagetype) => {
+    let messagetype = elementByType.keys().find((messagetype) => {
         // skip, if element does not exist
-        if (!ELEMENT_BY_TYPE[messagetype]) {
+        if (!elementByType.has(messagetype)) {
             return false;
         }
 
-        return ELEMENT_BY_TYPE[messagetype].isEqualNode(elMessage);
+        return elementByType.get(messagetype).isEqualNode(elMessage);
     });
 
     if (messagetype === undefined) {
@@ -206,14 +133,93 @@ function getElementFromMessageType(messagetype) {
         messagetype = getCustomMessageType(elMessage);
 
         isCustomMessage = true;
-    } else if (messagetype in ELEMENT_BY_TYPE) {
+    } else if (elementByType.has(messagetype)) {
         // verify string message types are valid
-        elMessage = ELEMENT_BY_TYPE[messagetype];
+        elMessage = elementByType.get(messagetype);
     } else {
         throw new Error(`message type ${messagetype} is/belong to an unknown element`);
     }
 
     return [messagetype, elMessage, isCustomMessage];
+}
+
+/**
+ * Runs a hook set by some module.
+ *
+ * It automatically also runs the global hook, but you can still specify a
+ * 'global' to ruin it manually.
+ *
+ * @function
+ * @private
+ * @param  {MESSAGE_LEVEL|global} messagetype
+ * @param  {HOOK_TYPE} hooktype the type you want to call
+ * @param  {Object} param the parameter to pass to the function
+ * @returns {void}
+ */
+function runHook(messagetype, hooktype, param) {
+    // when not global itself -> to prevent infinite loop
+    if (hooktype !== GLOBAL_HOOK_ID) {
+        // recursively run myself for global hook first
+        runHook(messagetype, GLOBAL_HOOK_ID, param);
+    }
+
+    const hook = hooks.get(messagetype).hooktype;
+    if (hook !== null && hook !== undefined) {
+        hook(param);
+    }
+}
+
+/**
+ * Dismisses (i.e. hides with animation) a message when the dismiss button is clicked.
+ *
+ * It automatically detects whether it is run as a trigger (click event) or
+ * as the "finish event" ("transitionend") after the hiding is animated and
+ * hides the message.
+ *
+ * @function
+ * @private
+ * @param  {Object} event
+ * @returns {void}
+ */
+function dismissMessage(event) {
+    // if button is just clicked triggere hiding
+    if (event.type === "click") {
+        const elDismissIcon = event.target;
+        const elMessage = elDismissIcon.parentElement;
+        const messagetype = getMessageTypeFromElement(elMessage);
+
+        // ignore event, if it is not the correct one from the message box
+        if (!elMessage.classList.contains("message-box")) {
+            return;
+        }
+
+        // trigger hiding
+        elMessage.classList.add("fade-hide");
+
+        // add handler to hide message completly after transition
+        elMessage.addEventListener("transitionend", dismissMessage);
+
+        runHook(messagetype, "dismissStart", {
+            elMessage,
+            event
+        });
+
+        Logger.logInfo("message is dismissed", event);
+    } else if (event.type === "transitionend") {
+        const elMessage = event.target;
+        const messagetype = getMessageTypeFromElement(elMessage);
+
+        // hide message (and icon)
+        hideMessage(elMessage);
+
+        runHook(messagetype, "dismissEnd", {
+            elMessage,
+            event
+        });
+
+        // remove set handler
+        elMessage.removeEventListener("transitionend", dismissMessage);
+    }
 }
 
 /**
@@ -248,9 +254,10 @@ function actionButtonClicked(event) {
  * @param  {HTMLElement} elMessage
  * @param  {MESSAGE_LEVEL} newDesignType
  * @returns {void}
+ * @deprecated Use cloneMessage HTML instead.
  */
 export function setMessageDesign(elMessage, newDesignType) {
-    const newDesign = DESIGN_BY_TYPE[newDesignType];
+    const newDesign = elementByType.get(newDesignType);
     const elActionButton = elMessage.getElementsByClassName("message-action-button")[0];
 
     // set new design
@@ -258,7 +265,7 @@ export function setMessageDesign(elMessage, newDesignType) {
     elActionButton.classList.add(newDesign);
 
     // unset old design
-    Object.values(DESIGN_BY_TYPE).forEach((oldDesign) => {
+    elementByType.keys().forEach((oldDesign) => {
         if (oldDesign === newDesign) {
             return;
         }
@@ -388,6 +395,12 @@ export function showMessage(...args) {
 
     elMessage.classList.remove("invisible");
     elMessage.classList.remove("fade-hide");
+
+    // TODO: adjust arguments
+    // export function showSuccess(...args) {
+    //    runHook(MESSAGE_LEVEL.SUCCESS, "show", args);
+
+    runHook(messagetype, HOOK_TYPE.SHOW);
 }
 
 /**
@@ -405,7 +418,7 @@ export function hideMessage(messagetype) {
     // hide all messages if type is not specified
     if (messagetype === null || messagetype === undefined) {
         // hide all of them
-        MESSAGE_LEVEL.forEach((currentType) => {
+        elementByType.forEach((currentType) => {
             // recursive call myself to hide element
             hideMessage(currentType);
         });
@@ -424,6 +437,8 @@ export function hideMessage(messagetype) {
     }
 
     Logger.logInfo("message is hidden", elMessage);
+
+    runHook(messagetype, HOOK_TYPE.HIDE);
 
     return;
 }
@@ -461,198 +476,55 @@ export function cloneMessage(messagetype, newId) {
 }
 
 /**
- * Hides the error message.
+ * Changes a message hook for a specific message type.
+ *
+ * You can use the messagetype GLOBAL_HOOK_ID to set a global hook for all
+ * message types.
  *
  * @function
+ * @param {MESSAGE_LEVEL|GLOBAL_HOOK_ID} messagetype
+ * @param {HOOK_TYPE} hooktype the type you want to call
+ * @param {function|null} hookFunction
  * @returns {void}
  */
-export function hideError() {
-    runHook(MESSAGE_LEVEL.ERROR, "hide");
-    hideMessage(MESSAGE_LEVEL.ERROR);
+export function setHook(messagetype, hooktype, hookFunction) {
+    const hook = hooks.get(messagetype);
+    // hook.set(hooktype, hookFunction);
+    hooktype[hooktype] = hookFunction;
+    hooks.set(messagetype, hook);
 }
 
 /**
- * Hide error message.
+ * Registers a new message type.
+ *
+ * It requires a HTML element and class to be passed.
  *
  * @function
+ * @param  {MESSAGE_LEVEL|string} messagetype
+ * @param {HTMLElement} elElement
+ * @param {string} cssClass
  * @returns {void}
  */
-export function hideWarning() {
-    runHook(MESSAGE_LEVEL.WARN, "hide");
-    hideMessage(MESSAGE_LEVEL.WARN);
-}
+export function registerMessageType(messagetype, elElement, cssClass) {
+    elementByType.add(messagetype, elElement);
+    styleClassByType.add(messagetype, cssClass);
+    hooks.add(messagetype, HOOK_TEMPLATE);
 
-/**
- * Hide info message.
- *
- * @function
- * @returns {void}
- */
-export function hideInfo() {
-    runHook(MESSAGE_LEVEL.INFO, "hide");
-    hideMessage(MESSAGE_LEVEL.INFO);
-}
+    /* add event listeners */
+    const dismissIcons = elElement.getElementsByClassName("icon-dismiss");
 
-/**
- * Hide loading message.
- *
- * @function
- * @returns {void}
- */
-export function hideLoading() {
-    runHook(MESSAGE_LEVEL.LOADING, "hide");
-    hideMessage(MESSAGE_LEVEL.LOADING);
-}
+    for (const elDismissIcon of dismissIcons) {
+        // hide message when dismiss button is clicked
+        elDismissIcon.addEventListener("click", dismissMessage);
+    }
 
-/**
- * Hide success message.
- *
- * @function
- * @returns {void}
- */
-export function hideSuccess() {
-    runHook(MESSAGE_LEVEL.SUCCESS, "hide");
-    hideMessage(MESSAGE_LEVEL.SUCCESS);
-}
+    const actionButtons = elElement.getElementsByClassName("message-action-button");
 
-/**
- * Show a critical error.
- *
- * Note this should only be used to show *short* error messages, which are
- * meaningfull to the user, as the space is limited. So it is mostly only
- * useful to use only one param: a string.
- * Also pay attention to the fact, that it currently can only show one error
- * once.
- *
- * @function
- * @param {string} message optional, string to show or to translate if omitted no new text is shown
- * @param {boolean} isDismissable optional, set to true, if user should be able to dismiss the message
- * @param {Object} actionButton optional to show an action button
- * @param {string} actionButton.text
- * @param {string|function} actionButton.action URL to site to open on link OR function to execute
- * @param {...*} args optional parameters for translation
- * @returns {void}
- */
-export function showError(...args) {
-    runHook(MESSAGE_LEVEL.ERROR, "show", args);
+    for (const elActionButton of actionButtons) {
+        const elActionButtonLink = elActionButton.parentElement;
+        elActionButtonLink.addEventListener("click", actionButtonClicked);
+    }
 
-    args.unshift(MESSAGE_LEVEL.ERROR);
-    showMessage(...args);
-}
-
-/**
- * Show an warning message.
- *
- * @function
- * @param {string} message optional, string to show or to translate if omitted no new text is shown
- * @param {boolean} isDismissable optional, set to true, if user should be able to dismiss the message
- * @param {Object} actionButton optional to show an action button
- * @param {string} actionButton.text
- * @param {string|function} actionButton.action URL to site to open on link OR function to execute
- * @param {...*} args optional parameters for translation
- * @returns {void}
- */
-export function showWarning(...args) {
-    runHook(MESSAGE_LEVEL.WARN, "show", args);
-
-    args.unshift(MESSAGE_LEVEL.WARN);
-    showMessage(...args);
-}
-
-/**
- * Show an info message.
- *
- * @function
- * @param {string} message optional, string to show or to translate if omitted no new text is shown
- * @param {boolean} isDismissable optional, set to true, if user should be able to dismiss the message
- * @param {Object} actionButton optional to show an action button
- * @param {string} actionButton.text
- * @param {string} actionButton.link URL to site to open on link
- * @param {...*} args optional parameters for translation
- * @returns {void}
- */
-export function showInfo(...args) {
-    runHook(MESSAGE_LEVEL.INFO, "show", args);
-
-    args.unshift(MESSAGE_LEVEL.INFO);
-    showMessage(...args);
-}
-
-/**
- * Shows a loading message.
- *
- * @function
- * @param {string} message optional, string to show or to translate if omitted no new text is shown
- * @param {boolean} isDismissable optional, set to true, if user should be able to dismiss the message
- * @param {Object} actionButton optional to show an action button
- * @param {string} actionButton.text
- * @param {string|function} actionButton.action URL to site to open on link OR function to execute
- * @param {...*} args optional parameters for translation
- * @returns {void}
- */
-export function showLoading(...args) {
-    runHook(MESSAGE_LEVEL.LOADDING, "show", args);
-
-    args.unshift(MESSAGE_LEVEL.LOADDING);
-    showMessage(...args);
-}
-
-/**
- * Show a success message.
- *
- * @function
- * @param {string} message optional, string to show or to translate if omitted no new text is shown
- * @param {boolean} isDismissable optional, set to true, if user should be able to dismiss the message
- * @param {Object} actionButton optional to show an action button
- * @param {string} actionButton.text
- * @param {string|function} actionButton.action URL to site to open on link OR function to execute
- * @param {...*} args optional parameters for translation
- * @returns {void}
- */
-export function showSuccess(...args) {
-    runHook(MESSAGE_LEVEL.SUCCESS, "show", args);
-
-    args.unshift(MESSAGE_LEVEL.SUCCESS);
-    showMessage(...args);
-}
-
-/**
- * Let's other functions set a hook to be called when a message type is
- * shown or hidden.
- *
- * Set parameters to null or undefined (i.e. do not set) in order to disable
- * the hook.
- * The errorShown function gets one parameter: The arguments passed to the
- * function, as an array.
- *
- * @function
- * @param  {MESSAGE_LEVEL|HtmlElement} messagetype use string "global" for a global hook
- * @param {function|null} hookShown
- * @param {function|null} hookHidden
- * @returns {void}
- */
-export function setHook(messagetype, hookShown, hookHidden) {
-    hooks[messagetype].show = hookShown;
-    hooks[messagetype].hide = hookHidden;
-}
-
-/**
- * Called when a message is dismissed.
- *
- + When called, the function does not know, which message is hidden, but you
- * can determinante it by yourself.
- * The called hook gets an object with two parameters:
- * - {HTMLElement} elMessage – the message element, which was hidden
- * - {event} event – the original click even on the dismiss button
- *
- * @function
- * @param {function|null} startHook
- * @param {function|null} endHook
- * @returns {void}
- */
-export function setDismissHooks(startHook, endHook) {
-    hooks.global.dismissStart = startHook;
-    hooks.global.dismissEnd = endHook;
 }
 
 /**
@@ -662,23 +534,10 @@ export function setDismissHooks(startHook, endHook) {
  * @returns {void}
  */
 export function init() {
-    /* add event listeners */
-    const dismissIcons = document.getElementsByClassName("icon-dismiss");
-
-    for (const elDismissIcon of dismissIcons) {
-        // hide message when dismiss button is clicked
-        elDismissIcon.addEventListener("click", dismissMessage);
-    }
-
-    const actionButtons = document.getElementsByClassName("message-action-button");
-
-    for (const elActionButton of actionButtons) {
-        const elActionButtonLink = elActionButton.parentElement;
-        elActionButtonLink.addEventListener("click", actionButtonClicked);
-    }
+    hooks.add(GLOBAL_HOOK_ID, HOOK_TEMPLATE);
 }
 
 // init module automatically
 init();
 
-Logger.logInfo("MessageHandler module loaded.");
+Logger.logInfo("MessagRegister module loaded.");
